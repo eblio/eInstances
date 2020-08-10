@@ -1,48 +1,38 @@
+-- ## eInstances : server side
+
+-- Current instances
 local instances = {}
 
-local function DoesInstanceExist(instanceId)
-	return (instances[instanceId] ~= nil)
-end
-
-local function FindElement(var, tab)
-	for i = 1, #tab do
-		if var == tab[i] then
-			return true, i
-		end
-	end
-	return false, 0
-end
-
-RegisterServerEvent('instances:get')
-AddEventHandler('instances:get', function()
+local function getInstances()
 	local Source = source
 	TriggerClientEvent('instances:set', Source, instances)
-end)
+end
 
-RegisterServerEvent('instances:update')
-AddEventHandler('instances:update', function(instanceId, joining)
+local function enteredInstance(instanceId)
 	local Source = source
 
-	if joining then
-
-		if not DoesInstanceExist(instanceId) then
+	if isInstanceIdValid(instanceId) then
+		
+		if not doesInstanceExist(instanceId) then
 			instances[instanceId] = {}
 		end
 
-		table.insert(instances[instanceId], Source)
-
-	else
-
-		if DoesInstanceExist(instanceId) then
-			local handle, index = FindElement(Source, instances[instanceId])
-
-			if handle then
-				table.remove(instances[instanceId], index)
-			end
-
-		end
+		instances[instanceId][Source] = true
+		TriggerClientEvent('instance:set', -1, instanceId, instances[instanceId])
 
 	end
+end
 
-	TriggerClientEvent('instances:set', -1, instances)
-end)
+local function leftInstance(instanceId)
+	local Source = source
+
+	if isInstanceIdValid(instanceId) and isPlayerInInstance(instanceId, Source) then
+		instances[instanceId][Source] = nil
+		TriggerClientEvent('instance:set', -1, instanceId, instances[instanceId])
+	end
+end
+
+-- Register functions as events
+createNetEvent('instance:entered', enteredInstance)
+createNetEvent('instance:left', leftInstance)
+createNetEvent('instances:get', getInstances)

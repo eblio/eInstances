@@ -1,163 +1,123 @@
+-- ## eInstances : client side
+
+local KVP_LAST_INSTANCE = 'instance:last'
+
 local instances = {}
 
 local inInstance = false
 local currentInstanceId = 0
 
-local function IsInTable(var, tab)
-	for i = 1, #tab do
-		if var == tab[i] then
-			return true
-		end
-	end
-	return false
-end
+function clearPlayers()
 
--- Nettoyage de tous les conceal
-function ClearPlayers()
-
-	if not inInstance then
-
-		local playerList = GetActivePlayers()
-
-		for i = 1, #playerList do
-
-			local player = playerList[i]
-
-			if NetworkIsPlayerConcealed(player) then
-
-				NetworkConcealPlayer(player, false)
-
-			end
-
-		end
-
-	end
-
-end
-
--- Retour channel
-function ClearVocal()
-
-	if not inInstance then
-
-		exports.elio:ToggleForcedChannel()
-
-	end
-
-end
-
--- Cache des autres joueurs
-function ConcealPlayers()
-
-	if inInstance then
-
-		local playerList = GetActivePlayers()
-		local instanceList = instances[currentInstanceId]
-
-		if instanceList ~= nil then
-
-			for i = 1, #playerList do
-
-				local player = playerList[i]
-
-				if not NetworkIsPlayerConcealed(player) and not IsInTable(GetPlayerServerId(player), instanceList) then
-
-					NetworkConcealPlayer(player, true)
-
-				elseif NetworkIsPlayerConcealed(player) and IsInTable(GetPlayerServerId(player), instanceList) then
-
-					NetworkConcealPlayer(player, false)
-
-				end
-
-			end
-
-		end
-
-	end
-
-end
-
--- Connexion channel
-function ConcealVocal()
-
-	if inInstance then
-
-		exports.elio:ToggleForcedChannel(currentInstanceId + 100)
-
-	end
-
-end
-
-exports('GetClosestPlayerInInstance', function()
-
-	local minDist = 2.0
-	local closestPlayerServerId = nil
-
-	local localPlayerId = PlayerId()
-	local localPlayerServerId = GetPlayerServerId(localPlayerId)
 	local playerList = GetActivePlayers()
-	local playerCoords1 = GetEntityCoords(PlayerPedId())
-
 	for i = 1, #playerList do
 
-		local playerId = playerList[i]
-		local playerServerId = GetPlayerServerId(playerId)
-		local playerPed = GetPlayerPed(playerId)
+		local player = playerList[i]
 
-		if playerServerId ~= localPlayerServerId then
-			if inInstance then
+		if NetworkIsPlayerConcealed(player) then
+			NetworkConcealPlayer(player, false)
+		end
 
-				if IsInTable(playerServerId, instances[currentInstanceId]) then
+	end
 
-					local playerCoords2 = GetEntityCoords(playerPed)
-					local dist = #(playerCoords1 - playerCoords2)
+end
 
-					if dist <= minDist then
-						minDist = dist
-						closestPlayerServerId = playerServerId
-					end
+function concealPlayers()
 
-				end
+	local localPlayer = PlayerId()
+	local playerList = GetActivePlayers()
+	for i = 1, #playerList do
 
-			else
+		local player = playerList[i]
 
-				local playerCoords2 = GetEntityCoords(playerPed)
-				local dist = #(playerCoords1 - playerCoords2)
+		if player ~= localPlayer then
 
-				if dist <= minDist then
-					minDist = dist
-					closestPlayerServerId = playerServerId
-				end
+			local concealed = NetworkIsPlayerConcealed(player)
+			local playerServerId = GetPlayerServerId(player)
+			local inCurrentInstance = isPlayerInInstance(currentInstanceId, playerServerId)
 
+			if not concealed and not inCurrentInstance then
+				NetworkConcealPlayer(player, true)
 			end
+			
+			if concealed and inCurrentInstance then
+				NetworkConcealPlayer(player, false)
+			end
+
+		end
+
+	end
+
+end
+
+local function setInstances(newInstances)
+	instances = newInstances
+end
+
+local function setInstance(instanceId, instance)
+	instances[instanceId] = instance
+end
+
+local function enterInstance(instanceId)
+	if isInstanceIdValid(instanceId) then
+		TriggerServerEvent('instance:entered', instanceId)
+		TriggerEvent('instance:entered', instanceId)
+
+		inInstance = true
+		currentInstanceId = instanceId
+
+		SetResourceKvp('instance:last', instanceId)
+		concealPlayers()
+	end
+end
+
+local function leaveInstance(instanceId)
+	if isInstanceIdValid(instanceId) then
+		TriggerServerEvent('instance:left', instanceId)
+		TriggerEvent('instance:left', instanceId)
+
+		inInstance = false
+		currentInstanceId = nil
+
+		SetResourceKvp(KVP_LAST_INSTANCE, 'nil')
+		clearPlayers()
+	end
+end
+
+AddEventHandler('playerSpanwed', function()
+	TriggerServerEvent('instances:get')
+	local lastInstanceId = GetResourceKvpString(KVP_LAST_INSTANCE)
+
+	if isInstanceIdValid(lastInstanceId) and lastInstanceId ~= 'nil' then
+		TriggerEvent('instance:wasInInstance', lastInstanceId) -- Notify that the player was in an instance when he disconnected
+	end
+end)
+
+-- Register Enter/Leave instance as exports
+exports('EnterInstance', enterInstance)
+exports('LeaveInstance', leaveInstance)
+
+createNetEvent('instances:set', setInstances)
+createNetEvent('instance:set', setInstance)
+
+Citizen.CreateThread(function()
+	while true do
+		Wait(1000)
+		if inInstance then
+			concealPlayers()
 		end
 	end
-
-	return closestPlayerServerId, minDist
 end)
 
-exports('GetPlayersInInstance', function()
-	if inInstance then
-		return instances[currentInstanceId]
-	else
-		return {GetPlayerServerId(PlayerId())}
-	end
-end)
+-- exports('GetClosestPlayerInInstance', function()
 
--- exports('GetPlayersInRangeInInstance', function(dist)
--- 	local playersServerId = {}
+-- 	local minDist = 2.0
+-- 	local closestPlayerServerId = nil
 
 -- 	local localPlayerId = PlayerId()
 -- 	local localPlayerServerId = GetPlayerServerId(localPlayerId)
 -- 	local playerList = GetActivePlayers()
 -- 	local playerCoords1 = GetEntityCoords(PlayerPedId())
-
--- 	if inInstance then
--- 		local playerList = instances[currentInctanceId]
--- 	else
--- 		local playerList = GetActivePlayers()
--- 	end
 
 -- 	for i = 1, #playerList do
 
@@ -166,90 +126,41 @@ end)
 -- 		local playerPed = GetPlayerPed(playerId)
 
 -- 		if playerServerId ~= localPlayerServerId then
-			
--- 			local playerCoords2 = GetEntityCoords(playerPed)
--- 			local d = #(playerCoords1 - playerCoords2)
+-- 			if inInstance then
 
--- 			if d <= dist then
--- 				playersServerId[#playersServerId+1] = playerServerId
+-- 				if IsInTable(playerServerId, instances[currentInstanceId]) then
+
+-- 					local playerCoords2 = GetEntityCoords(playerPed)
+-- 					local dist = #(playerCoords1 - playerCoords2)
+
+-- 					if dist <= minDist then
+-- 						minDist = dist
+-- 						closestPlayerServerId = playerServerId
+-- 					end
+
+-- 				end
+
+-- 			else
+
+-- 				local playerCoords2 = GetEntityCoords(playerPed)
+-- 				local dist = #(playerCoords1 - playerCoords2)
+
+-- 				if dist <= minDist then
+-- 					minDist = dist
+-- 					closestPlayerServerId = playerServerId
+-- 				end
+
 -- 			end
-			
 -- 		end
 -- 	end
 
--- 	return playersServerId
+-- 	return closestPlayerServerId, minDist
 -- end)
 
--- RegisterCommand('join', function(source, args)
--- 	TriggerEvent('instances:join', tonumber(args[1]))
+-- exports('GetPlayersInInstance', function()
+-- 	if inInstance then
+-- 		return instances[currentInstanceId]
+-- 	else
+-- 		return {GetPlayerServerId(PlayerId())}
+-- 	end
 -- end)
-
--- RegisterCommand('leave', function(source, args)
--- 	TriggerEvent('instances:leave')
--- end)
-
-AddEventHandler('playerSpawned', function()
-	TriggerServerEvent('instances:get')
-end)
-
-RegisterNetEvent('instances:set')
-AddEventHandler('instances:set', function(_instances)
-	instances = _instances
-end)
-
-AddEventHandler('instances:join', function(instanceId)
-
-	inInstance = true
-	currentInstanceId = instanceId
-
-	Wait(500)
-
-	ConcealVocal()
-	ConcealPlayers()
-
-	TriggerServerEvent('instances:update', instanceId, true)
-
-end)
-
-AddEventHandler('instances:leave', function()
-
-	inInstance = false
-	currentInstanceId = 0
-
-	Wait(500)
-
-	ClearVocal()
-	ClearPlayers()
-
-	TriggerServerEvent('instances:update', currentInstanceId, false)
-
-end)
-
-Citizen.CreateThread(function()
-
-	while true do
-		Wait(750)
-
-		ConcealPlayers()
-
-	end
-
-end)
-
-Citizen.CreateThread(function()
-
-	while true do
-		Wait(0)
-
-		if inInstance then
-
-			SetVehicleDensityMultiplierThisFrame(0.0)
-			SetParkedVehicleDensityMultiplierThisFrame(0.0)
-			local playerCoords = GetEntityCoords(PlayerPedId())
-			RemoveVehiclesFromGeneratorsInArea(playerCoords.x - 900.0, playerCoords.y - 900.0, playerCoords.z - 900.0, playerCoords.x + 900.0, playerCoords.y + 900.0, playerCoords.z + 900.0)
-
-		end
-
-	end
-
-end)

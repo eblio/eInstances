@@ -10,7 +10,7 @@ The **identifier of an instance has to be a string** otherwise the call will mos
 | Name | Action | Example |
 | --- | --- | --- |
 | EnterInstance(id) | Make the player enter an instance. | `exports.eInstances:EnterInstance('apt:1')` |
-| LeaveInstance(id) | Make the player leave an instance. If the identifier is invalid, the player will leave the current instance. | `exports.eInstances:LeaveInstance()` |
+| LeaveInstance() | Make the player leave current instance. | `exports.eInstances:LeaveInstance()` |
 
 ### Events
 

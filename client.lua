@@ -72,16 +72,19 @@ local function enterInstance(instanceId)
 end
 
 local function leaveInstance(instanceId)
-	if isInstanceIdValid(instanceId) then
-		TriggerServerEvent('instance:left', instanceId)
-		TriggerEvent('instance:left', instanceId)
 
-		inInstance = false
-		currentInstanceId = nil
-
-		SetResourceKvp(KVP_LAST_INSTANCE, 'nil')
-		clearPlayers()
+	if not isInstanceIdValid(instanceId) then
+		instanceId = currentInstanceId
 	end
+
+	TriggerServerEvent('instance:left', instanceId)
+	TriggerEvent('instance:left', instanceId)
+
+	inInstance = false
+	currentInstanceId = nil
+
+	SetResourceKvp(KVP_LAST_INSTANCE, 'nil')
+	clearPlayers()
 end
 
 AddEventHandler('playerSpanwed', function()
@@ -102,11 +105,19 @@ createNetEvent('instance:set', setInstance)
 
 Citizen.CreateThread(function()
 	while true do
-		Wait(1000)
+		Wait(500)
 		if inInstance then
 			concealPlayers()
 		end
 	end
+end)
+
+RegisterCommand('enter', function(source, args)
+	enterInstance(args[1])
+end)
+
+RegisterCommand('leave', function(source, args)
+	leaveInstance()
 end)
 
 -- exports('GetClosestPlayerInInstance', function()

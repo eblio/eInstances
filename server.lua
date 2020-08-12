@@ -1,38 +1,35 @@
 -- ## eInstances : server side
 
--- Current instances
-local instances = {}
-
-local function getInstances()
+local function getAllInstances()
 	local Source = source
-	TriggerClientEvent('instances:set', Source, instances)
+	TriggerClientEvent('instances:set', Source, getInstances())
 end
 
-local function enteredInstance(instanceId)
+local function enteredInstance(id)
 	local Source = source
 
-	if isInstanceIdValid(instanceId) then
-		
-		if not doesInstanceExist(instanceId) then
-			instances[instanceId] = {}
-		end
+	if isInstanceIdValid(id) then
 
-		instances[instanceId][Source] = true
-		TriggerClientEvent('instance:set', -1, instanceId, instances[instanceId])
+		addPlayerToInstance(id, Source)
+		TriggerClientEvent('instance:set', -1, id, getInstance(id))
+		log("player " .. Source .. " entered " .. id)
 
 	end
 end
 
-local function leftInstance(instanceId)
+local function leftInstance(id)
 	local Source = source
+	
+	if isInstanceIdValid(id) and isPlayerInInstance(id, Source) then
 
-	if isInstanceIdValid(instanceId) and isPlayerInInstance(instanceId, Source) then
-		instances[instanceId][Source] = nil
-		TriggerClientEvent('instance:set', -1, instanceId, instances[instanceId])
+		removePlayerFromInstance(id, Source)
+		TriggerClientEvent('instance:set', -1, id, getInstance(id))
+		log("player " .. Source .. " left " .. id)
+
 	end
 end
 
 -- Register functions as events
 createNetEvent('instance:entered', enteredInstance)
 createNetEvent('instance:left', leftInstance)
-createNetEvent('instances:get', getInstances)
+createNetEvent('instances:get', getAllInstances)

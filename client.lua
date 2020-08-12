@@ -2,12 +2,10 @@
 
 local KVP_LAST_INSTANCE = 'instance:last'
 
-local instances = {}
-
 local inInstance = false
 local currentInstanceId = 0
 
-function clearPlayers()
+local function clearPlayers()
 
 	local playerList = GetActivePlayers()
 	for i = 1, #playerList do
@@ -16,13 +14,14 @@ function clearPlayers()
 
 		if NetworkIsPlayerConcealed(player) then
 			NetworkConcealPlayer(player, false)
+			log("player : " .. player .. " - visible")
 		end
 
 	end
 
 end
 
-function concealPlayers()
+local function concealPlayers()
 
 	local localPlayer = PlayerId()
 	local playerList = GetActivePlayers()
@@ -33,15 +32,16 @@ function concealPlayers()
 		if player ~= localPlayer then
 
 			local concealed = NetworkIsPlayerConcealed(player)
-			local playerServerId = GetPlayerServerId(player)
-			local inCurrentInstance = isPlayerInInstance(currentInstanceId, playerServerId)
+			local inCurrentInstance = isPlayerInInstance(currentInstanceId, GetPlayerServerId(player))
 
 			if not concealed and not inCurrentInstance then
 				NetworkConcealPlayer(player, true)
+				log("player : " .. player .. " - invisible")
 			end
 			
 			if concealed and inCurrentInstance then
 				NetworkConcealPlayer(player, false)
+				log("player : " .. player .. " - visible")
 			end
 
 		end
@@ -50,55 +50,104 @@ function concealPlayers()
 
 end
 
-local function setInstances(newInstances)
-	instances = newInstances
+local function getPlayersInInstance()
+	local players = {}
+
+	if inInstance then
+		for k, _ in pairs(getInstance(currentInstanceId)) do
+			players[#players+1] = GetPlayerFromServerId(k)
+		end
+	else
+		players = GetActivePlayers()
+	end
+
+	return players
 end
 
-local function setInstance(instanceId, instance)
-	instances[instanceId] = instance
+local function getClosestPlayer(radius)
+	local min = radius
+	local closestPlayer = nil
+
+	local playersList = getPlayersInInstance()
+	local localPed = PlayerPedId()
+	local localCoords = GetEntityCoords(localPed)
+
+	for i = 1, #playersList do
+
+		local player = playersList[i]
+		local playerPed = GetPlayerPed(player)
+
+		if localPed ~= playerPed then
+
+			local playerCoords = GetEntityCoords(playerPed)
+			local dist = #(localCoords - playerCoords)
+
+			if dist < min then
+				closestPlayer = player
+				min = dist
+			end
+
+		end
+		
+	end
+
+	return closestPlayer, min
 end
 
 local function enterInstance(instanceId)
-	if isInstanceIdValid(instanceId) then
-		TriggerServerEvent('instance:entered', instanceId)
-		TriggerEvent('instance:entered', instanceId)
+	if not inInstance then
+		if isInstanceIdValid(instanceId) then
+			TriggerServerEvent('instance:entered', instanceId)
+			TriggerEvent('instance:entered', instanceId)
 
-		inInstance = true
-		currentInstanceId = instanceId
+			inInstance = true
+			currentInstanceId = instanceId
 
-		SetResourceKvp('instance:last', instanceId)
-		concealPlayers()
+			SetResourceKvp('instance:last', instanceId)
+			concealPlayers()
+
+			log("entered : " .. instanceId)
+		else
+			log("failed to enter " .. instanceId .. " (invalid identifier)")
+		end
+	else
+		log("failed to enter " .. instanceId .. " (already in an instance)")
 	end
 end
 
-local function leaveInstance(instanceId)
+local function leaveInstance()
+	if inInstance then
+		local instanceId = currentInstanceId
+		TriggerServerEvent('instance:left', instanceId)
+		TriggerEvent('instance:left', instanceId)
 
-	if not isInstanceIdValid(instanceId) then
-		instanceId = currentInstanceId
+		inInstance = false
+		currentInstanceId = nil
+
+		SetResourceKvp(KVP_LAST_INSTANCE, 'nil')
+		clearPlayers()
+
+		log("left : " .. instanceId)
+	else
+		log("failed to leave instance (not in an instance)")
 	end
-
-	TriggerServerEvent('instance:left', instanceId)
-	TriggerEvent('instance:left', instanceId)
-
-	inInstance = false
-	currentInstanceId = nil
-
-	SetResourceKvp(KVP_LAST_INSTANCE, 'nil')
-	clearPlayers()
 end
 
-AddEventHandler('playerSpanwed', function()
+AddEventHandler('playerSpawned', function()
 	TriggerServerEvent('instances:get')
 	local lastInstanceId = GetResourceKvpString(KVP_LAST_INSTANCE)
 
 	if isInstanceIdValid(lastInstanceId) and lastInstanceId ~= 'nil' then
 		TriggerEvent('instance:wasInInstance', lastInstanceId) -- Notify that the player was in an instance when he disconnected
+		log("disconnected in an instance : " .. lastInstanceId)
 	end
 end)
 
 -- Register Enter/Leave instance as exports
 exports('EnterInstance', enterInstance)
 exports('LeaveInstance', leaveInstance)
+exports('GetPlayersInInstance', getPlayersInInstance)
+exports('GetClosestPlayerInInstance', getClosestPlayer)
 
 createNetEvent('instances:set', setInstances)
 createNetEvent('instance:set', setInstance)
@@ -111,67 +160,3 @@ Citizen.CreateThread(function()
 		end
 	end
 end)
-
-RegisterCommand('enter', function(source, args)
-	enterInstance(args[1])
-end)
-
-RegisterCommand('leave', function(source, args)
-	leaveInstance()
-end)
-
--- exports('GetClosestPlayerInInstance', function()
-
--- 	local minDist = 2.0
--- 	local closestPlayerServerId = nil
-
--- 	local localPlayerId = PlayerId()
--- 	local localPlayerServerId = GetPlayerServerId(localPlayerId)
--- 	local playerList = GetActivePlayers()
--- 	local playerCoords1 = GetEntityCoords(PlayerPedId())
-
--- 	for i = 1, #playerList do
-
--- 		local playerId = playerList[i]
--- 		local playerServerId = GetPlayerServerId(playerId)
--- 		local playerPed = GetPlayerPed(playerId)
-
--- 		if playerServerId ~= localPlayerServerId then
--- 			if inInstance then
-
--- 				if IsInTable(playerServerId, instances[currentInstanceId]) then
-
--- 					local playerCoords2 = GetEntityCoords(playerPed)
--- 					local dist = #(playerCoords1 - playerCoords2)
-
--- 					if dist <= minDist then
--- 						minDist = dist
--- 						closestPlayerServerId = playerServerId
--- 					end
-
--- 				end
-
--- 			else
-
--- 				local playerCoords2 = GetEntityCoords(playerPed)
--- 				local dist = #(playerCoords1 - playerCoords2)
-
--- 				if dist <= minDist then
--- 					minDist = dist
--- 					closestPlayerServerId = playerServerId
--- 				end
-
--- 			end
--- 		end
--- 	end
-
--- 	return closestPlayerServerId, minDist
--- end)
-
--- exports('GetPlayersInInstance', function()
--- 	if inInstance then
--- 		return instances[currentInstanceId]
--- 	else
--- 		return {GetPlayerServerId(PlayerId())}
--- 	end
--- end)
